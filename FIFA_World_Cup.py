@@ -1,232 +1,223 @@
-# FIFA World Cup Dashboard
-# Deployed at: [Insert Render.com URL here]
-# Password: Not required 
+# Link to deployed app: https://fifa-world-cup-dashboard.onrender.com
+# Link to github http (in case render doesn't work): 
+# No password required
 
 import pandas as pd
 import numpy as np
+import dash
+from dash import dcc, html, callback, Input, Output
 import plotly.express as px
 import plotly.graph_objects as go
-from dash import Dash, dcc, html, Input, Output
 
-# Load the data
+# Create a Flask app
+app = dash.Dash(__name__, external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'])
+server = app.server
+
+# Reads the data
 df = pd.read_csv('data.csv')
 
-# Standardize Germany - ensure West Germany and Germany are treated as the same country
-df['Winner'] = df['Winner'].replace('West Germany', 'Germany')
-df['Runner_Up'] = df['Runner_Up'].replace('West Germany', 'Germany')
+# Dataframe with the count of wins for each country
+winners_count = df['Winner'].value_counts().reset_index()
+winners_count.columns = ['Country', 'Wins']
 
-# Count the number of wins per country
-wins_per_country = df['Winner'].value_counts().reset_index()
-wins_per_country.columns = ['Country', 'Wins']
+# Dataframe with the count of runner-ups for each country
+runner_ups_count = df['Runner_Up'].value_counts().reset_index()
+runner_ups_count.columns = ['Country', 'Runner_Ups']
 
-# Count the number of runner-ups per country
-runner_ups_per_country = df['Runner_Up'].value_counts().reset_index()
-runner_ups_per_country.columns = ['Country', 'Runner_Ups']
+# List of unique years
+years = df['Year'].unique().tolist()
+years.sort()
 
-# Creating a dashboard
-app = Dash(__name__)
-server = app.server  # Needed for Render deployment
+# List of unique countries that have won or been runner-up
+countries = list(set(df['Winner'].unique().tolist() + df['Runner_Up'].unique().tolist()))
+countries.sort()
 
-# Define the layout of the dashboard
+# Dataframe with ISO country codes for mapping
+country_codes = pd.DataFrame({
+    'Country': df['Winner'].unique().tolist() + df['Runner_Up'].unique().tolist(),
+    'ISO': df['Winner_Country_Code'].unique().tolist() + df['Runner_Up_Country_Code'].unique().tolist()
+}).drop_duplicates()
+
+# App layout
 app.layout = html.Div([
-    html.H1('FIFA World Cup Dashboard (1930-2022)', style={'textAlign': 'center'}),
+    html.H1("FIFA World Cup Dashboard", style={'textAlign': 'center'}),
     
     html.Div([
         html.Div([
-            html.H3('Select View Option:'),
+            html.H3("Select View"),
             dcc.RadioItems(
-                id='view-option',
+                id='view-selector',
                 options=[
                     {'label': 'All World Cup Winners', 'value': 'all_winners'},
-                    {'label': 'Wins by Country', 'value': 'by_country'},
-                    {'label': 'Winners by Year', 'value': 'by_year'}
+                    {'label': 'Select Country', 'value': 'by_country'},
+                    {'label': 'Select Year', 'value': 'by_year'}
                 ],
                 value='all_winners',
-                style={'marginBottom': '20px'}
+                labelStyle={'display': 'block'}
             ),
             
-            html.Div(id='dynamic-controls', style={'marginBottom': '20px'})
-        ], style={'width': '25%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '20px'}),
+            html.Div(id='country-selector-container', children=[
+                html.H4("Select Country"),
+                dcc.Dropdown(
+                    id='country-dropdown',
+                    options=[{'label': country, 'value': country} for country in countries],
+                    value=countries[0]
+                )
+            ], style={'display': 'none'}),
+            
+            html.Div(id='year-selector-container', children=[
+                html.H4("Select Year"),
+                dcc.Dropdown(
+                    id='year-dropdown',
+                    options=[{'label': year, 'value': year} for year in years],
+                    value=years[0]
+                )
+            ], style={'display': 'none'})
+        ], className="four columns"),
         
         html.Div([
-            dcc.Graph(id='choropleth-map')
-        ], style={'width': '70%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-    ]),
-    
-    html.Div(id='details-display', style={'margin': '20px', 'padding': '20px', 'border': '1px solid #ddd', 'borderRadius': '5px'})
+            dcc.Graph(id='world-map'),
+            html.Div(id='info-display')
+        ], className="eight columns")
+    ], className="row")
 ])
 
-# Callback to update dynamic controls based on view option
+# Callback to update the visibility of selectors
 @app.callback(
-    Output('dynamic-controls', 'children'),
-    Input('view-option', 'value')
+    [Output('country-selector-container', 'style'),
+     Output('year-selector-container', 'style')],
+    [Input('view-selector', 'value')]
 )
-def update_controls(view_option):
-    if view_option == 'all_winners':
-        return []
-    
-    elif view_option == 'by_country':
-        # Create a dropdown for countries that have won the World Cup
-        unique_winners = sorted(df['Winner'].unique())
-        return [
-            html.H4('Select a Country:'),
-            dcc.Dropdown(
-                id='country-dropdown',
-                options=[{'label': country, 'value': country} for country in unique_winners],
-                value=unique_winners[0]
-            )
-        ]
-    
-    elif view_option == 'by_year':
-        # Create a dropdown for years when World Cups were held
-        years = sorted(df['Year'].unique())
-        return [
-            html.H4('Select a Year:'),
-            dcc.Dropdown(
-                id='year-dropdown',
-                options=[{'label': str(year), 'value': year} for year in years],
-                value=years[-1]  # Default to most recent World Cup
-            )
-        ]
+def update_selectors_visibility(selected_view):
+    if selected_view == 'by_country':
+        return {'display': 'block'}, {'display': 'none'}
+    elif selected_view == 'by_year':
+        return {'display': 'none'}, {'display': 'block'}
+    else:
+        return {'display': 'none'}, {'display': 'none'}
 
-# Callback to update the choropleth map
+# Callback to update the map and info display
 @app.callback(
-    Output('choropleth-map', 'figure'),
-    Output('details-display', 'children'),
-    Input('view-option', 'value'),
-    Input('country-dropdown', 'value', allow_missing=True),
-    Input('year-dropdown', 'value', allow_missing=True)
+    [Output('world-map', 'figure'),
+     Output('info-display', 'children')],
+    [Input('view-selector', 'value'),
+     Input('country-dropdown', 'value'),
+     Input('year-dropdown', 'value')]
 )
-def update_map(view_option, selected_country, selected_year):
-    details_display = []
-    
-    if view_option == 'all_winners':
-        # Prepare data for the choropleth map - all countries that won
-        win_counts = df['Winner_Country_Code'].value_counts().reset_index()
-        win_counts.columns = ['iso_alpha3', 'Wins']
-        
-        # Create the choropleth map
+def update_map(selected_view, selected_country, selected_year):
+    if selected_view == 'all_winners':
+        # choropleth map showing all World Cup winners
         fig = px.choropleth(
-            win_counts, 
-            locations='iso_alpha3',
+            winners_count,
+            locations=winners_count['Country'].map(lambda x: country_codes[country_codes['Country'] == x]['ISO'].values[0]),
             color='Wins',
-            color_continuous_scale='Viridis',
-            range_color=[0, win_counts['Wins'].max()],
-            title='Number of World Cup Wins by Country (1930-2022)'
+            hover_name='Country',
+            color_continuous_scale=px.colors.sequential.Blues,
+            title='World Cup Winners',
+            labels={'Wins': 'Number of World Cup Wins'},
+            projection='natural earth'
         )
         
-        # Add detailed information about all winners
-        details_display = [
-            html.H3('World Cup Winners (1930-2022)'),
+        info = html.Div([
+            html.H4("World Cup Winners"),
             html.Table([
-                html.Thead(html.Tr([html.Th('Country'), html.Th('Number of Wins')])),
+                html.Thead(
+                    html.Tr([html.Th("Country"), html.Th("Number of Wins")])
+                ),
                 html.Tbody([
-                    html.Tr([html.Td(country), html.Td(wins)]) 
-                    for country, wins in zip(wins_per_country['Country'], wins_per_country['Wins'])
+                    html.Tr([html.Td(row['Country']), html.Td(row['Wins'])])
+                    for index, row in winners_count.iterrows()
                 ])
-            ], style={'width': '100%', 'textAlign': 'left', 'borderCollapse': 'collapse'})
-        ]
+            ])
+        ])
         
-    elif view_option == 'by_country' and selected_country:
-        # Filter data for the selected country
-        country_wins = df[df['Winner'] == selected_country]
-        country_code = country_wins['Winner_Country_Code'].iloc[0] if not country_wins.empty else None
+    elif selected_view == 'by_country':
+        # Choropleth map highlighting the selected country
+        country_iso = country_codes[country_codes['Country'] == selected_country]['ISO'].values[0]
+        # Count wins for the selected country
+        wins = winners_count[winners_count['Country'] == selected_country]['Wins'].values
+        wins = wins[0] if len(wins) > 0 else 0
+        # Count runner-ups for the selected country
+        runner_ups = runner_ups_count[runner_ups_count['Country'] == selected_country]['Runner_Ups'].values
+        runner_ups = runner_ups[0] if len(runner_ups) > 0 else 0
         
-        # Count total wins for the selected country
-        win_count = len(country_wins)
-        
-        # Prepare data for the choropleth map - highlighting the selected country
-        country_data = pd.DataFrame({
-            'iso_alpha3': [country_code],
-            'Wins': [win_count]
+        # Create a dataframe for the selected country
+        selected_df = pd.DataFrame({
+            'Country': [selected_country],
+            'ISO': [country_iso],
+            'Value': [1]  # Just to highlight the country
         })
         
-        # Create the choropleth map
         fig = px.choropleth(
-            country_data, 
-            locations='iso_alpha3',
-            color='Wins',
-            color_continuous_scale='Viridis',
-            range_color=[0, wins_per_country['Wins'].max()],
-            title=f'World Cup Wins: {selected_country} ({win_count} wins)'
+            selected_df,
+            locations='ISO',
+            color='Value',
+            hover_name='Country',
+            color_continuous_scale=px.colors.sequential.Blues,
+            title=f'{selected_country} World Cup Performance',
+            projection='natural earth'
         )
         
-        # Add detailed information about wins
-        details_display = [
-            html.H3(f'World Cup Wins for {selected_country}'),
-            html.Table([
-                html.Thead(html.Tr([html.Th('Year'), html.Th('Runner-Up')])),
-                html.Tbody([
-                    html.Tr([html.Td(year), html.Td(runner_up)]) 
-                    for year, runner_up in zip(country_wins['Year'], country_wins['Runner_Up'])
-                ])
-            ], style={'width': '100%', 'textAlign': 'left', 'borderCollapse': 'collapse'})
-        ]
+        # Get years when the country won or was runner-up
+        won_years = df[df['Winner'] == selected_country]['Year'].tolist()
+        runner_up_years = df[df['Runner_Up'] == selected_country]['Year'].tolist()
         
-    elif view_option == 'by_year' and selected_year:
-        # Filter data for the selected year
+        info = html.Div([
+            html.H4(f"{selected_country} World Cup Performance"),
+            html.P(f"World Cup Wins: {wins}"),
+            html.P(f"World Cup Runner-ups: {runner_ups}"),
+            html.H5("Years Won:"),
+            html.Ul([html.Li(str(year)) for year in won_years]) if won_years else html.P("None"),
+            html.H5("Years Runner-up:"),
+            html.Ul([html.Li(str(year)) for year in runner_up_years]) if runner_up_years else html.P("None")
+        ])
+        
+    elif selected_view == 'by_year':
+        # Get the winner and runner-up for the selected year
         year_data = df[df['Year'] == selected_year]
+        winner = year_data['Winner'].values[0]
+        runner_up = year_data['Runner_Up'].values[0]
+        winner_iso = year_data['Winner_Country_Code'].values[0]
+        runner_up_iso = year_data['Runner_Up_Country_Code'].values[0]
         
-        if not year_data.empty:
-            winner = year_data['Winner'].iloc[0]
-            runner_up = year_data['Runner_Up'].iloc[0]
-            winner_code = year_data['Winner_Country_Code'].iloc[0]
-            runner_up_code = year_data['Runner_Up_Country_Code'].iloc[0]
-            
-            # Prepare data for the choropleth map - highlighting winner and runner-up
-            world_cup_data = pd.DataFrame({
-                'iso_alpha3': [winner_code, runner_up_code],
-                'Country': [winner, runner_up],
-                'Result': ['Winner', 'Runner-Up'],
-                'Value': [2, 1]  # 2 for winner, 1 for runner-up for color differentiation
-            })
-            
-            # Create the choropleth map
-            fig = px.choropleth(
-                world_cup_data, 
-                locations='iso_alpha3',
-                color='Result',
-                color_discrete_map={'Winner': 'gold', 'Runner-Up': 'silver'},
-                title=f'World Cup {selected_year}: {winner} (Winner) vs {runner_up} (Runner-Up)'
-            )
-            
-            # Add detailed information about the selected year
-            details_display = [
-                html.H3(f'World Cup {selected_year}'),
-                html.Table([
-                    html.Tr([html.Th('Winner'), html.Td(winner)]),
-                    html.Tr([html.Th('Runner-Up'), html.Td(runner_up)])
-                ], style={'width': '100%', 'textAlign': 'left', 'borderCollapse': 'collapse'})
-            ]
-        else:
-            fig = go.Figure()
-            details_display = [html.P(f"No data available for {selected_year}")]
+        # Create a dataframe for the winner and runner-up
+        year_df = pd.DataFrame({
+            'Country': [winner, runner_up],
+            'ISO': [winner_iso, runner_up_iso],
+            'Result': ['Winner', 'Runner-up'],
+            'Value': [2, 1]  # Winner gets a higher value for darker color
+        })
+        
+        fig = px.choropleth(
+            year_df,
+            locations='ISO',
+            color='Value',
+            hover_name='Country',
+            hover_data=['Result'],
+            color_continuous_scale=px.colors.sequential.Blues,
+            title=f'{selected_year} FIFA World Cup',
+            projection='natural earth'
+        )
+        
+        info = html.Div([
+            html.H4(f"{selected_year} FIFA World Cup Final"),
+            html.P(f"Winner: {winner}"),
+            html.P(f"Runner-up: {runner_up}")
+        ])
     
-    else:
-        fig = go.Figure()
-        details_display = [html.P("Please select a view option")]
-    
-    # Improve map appearance
-    fig.update_geos(
-        showcoastlines=True,
-        coastlinecolor="RebeccaPurple",
-        showland=True,
-        landcolor="LightGreen",
-        showocean=True,
-        oceancolor="LightBlue",
-        showlakes=True,
-        lakecolor="Blue",
-        showrivers=True,
-        rivercolor="Blue"
-    )
-    
+    # Update the layout of the figure
     fig.update_layout(
         margin={"r": 0, "t": 30, "l": 0, "b": 0},
-        height=600
+        coloraxis_showscale=True,
+        geo=dict(
+            showframe=False,
+            showcoastlines=True,
+            projection_type='equirectangular'
+        )
     )
     
-    return fig, details_display
+    return fig, info
 
 # Run the app
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run(debug=True)
