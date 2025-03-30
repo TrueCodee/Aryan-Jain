@@ -1,5 +1,4 @@
 # Link to deployed app: https://fifa-world-cup-dashboard.onrender.com
-# Link to github http (in case render doesn't work): 
 # No password required
 
 import pandas as pd
@@ -8,31 +7,35 @@ import dash
 from dash import dcc, html, callback, Input, Output
 import plotly.express as px
 import plotly.graph_objects as go
+import os
 
 # Create a Flask app
 app = dash.Dash(__name__, external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'])
-server = app.server
+server = app.server  # This is the Flask server that Gunicorn needs
 
-# Reads the data
-df = pd.read_csv('data.csv')
+# Read the data
+# Get the current directory
+current_dir = os.path.dirname(os.path.abspath(__file__))
+data_path = os.path.join(current_dir, 'data.csv')
+df = pd.read_csv(data_path)
 
-# Dataframe with the count of wins for each country
+# Create a dataframe with the count of wins for each country
 winners_count = df['Winner'].value_counts().reset_index()
 winners_count.columns = ['Country', 'Wins']
 
-# Dataframe with the count of runner-ups for each country
+# Create a dataframe with the count of runner-ups for each country
 runner_ups_count = df['Runner_Up'].value_counts().reset_index()
 runner_ups_count.columns = ['Country', 'Runner_Ups']
 
-# List of unique years
+# Create a list of unique years
 years = df['Year'].unique().tolist()
 years.sort()
 
-# List of unique countries that have won or been runner-up
+# Create a list of unique countries that have won or been runner-up
 countries = list(set(df['Winner'].unique().tolist() + df['Runner_Up'].unique().tolist()))
 countries.sort()
 
-# Dataframe with ISO country codes for mapping
+# Create a dataframe with ISO country codes for mapping
 country_codes = pd.DataFrame({
     'Country': df['Winner'].unique().tolist() + df['Runner_Up'].unique().tolist(),
     'ISO': df['Winner_Country_Code'].unique().tolist() + df['Runner_Up_Country_Code'].unique().tolist()
@@ -106,7 +109,7 @@ def update_selectors_visibility(selected_view):
 )
 def update_map(selected_view, selected_country, selected_year):
     if selected_view == 'all_winners':
-        # choropleth map showing all World Cup winners
+        # Create a choropleth map showing all World Cup winners
         fig = px.choropleth(
             winners_count,
             locations=winners_count['Country'].map(lambda x: country_codes[country_codes['Country'] == x]['ISO'].values[0]),
@@ -132,7 +135,7 @@ def update_map(selected_view, selected_country, selected_year):
         ])
         
     elif selected_view == 'by_country':
-        # Choropleth map highlighting the selected country
+        # Create a choropleth map highlighting the selected country
         country_iso = country_codes[country_codes['Country'] == selected_country]['ISO'].values[0]
         # Count wins for the selected country
         wins = winners_count[winners_count['Country'] == selected_country]['Wins'].values
@@ -218,5 +221,7 @@ def update_map(selected_view, selected_country, selected_year):
     
     return fig, info
 
-# Run the app
+# This is for running the app locally
+if __name__ == '__main__':
+    app.run(debug=True)
 
