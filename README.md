@@ -2,7 +2,6 @@
 
 An interactive dashboard that visualizes FIFA World Cup winners and runner-ups from 1930 to 2022 using Choropleth maps.
 
-![Dashboard Screenshot](screenshot.png) <!-- Replace with actual screenshot if available -->
 ![image](https://github.com/user-attachments/assets/953b6065-018f-4f45-b813-8fb32703eda9)
 
 ---
