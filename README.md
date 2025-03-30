@@ -94,13 +94,7 @@ The dataset (`data.csv`) contains information from all FIFA World Cup finals, in
 ---
 
 ## 🧭 Project Structure
-fifa-world-cup-dashboard/
-├── app.py                  # Main Dash app
-├── data.csv                # FIFA World Cup finals data
-├── requirements.txt        # Python dependencies
-├── render.yaml             # Render deployment config
-└── README.md               # Documentation
-
+fifa-world-cup-dashboard/ ├── app.py # Main Dash app ├── data.csv # FIFA World Cup finals data ├── requirements.txt # Python dependencies  └── README.md # Documentation
 
 ---
 
