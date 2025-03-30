@@ -219,5 +219,4 @@ def update_map(selected_view, selected_country, selected_year):
     return fig, info
 
 # Run the app
-if __name__ == '__main__':
-    app.run(debug=True)
+
